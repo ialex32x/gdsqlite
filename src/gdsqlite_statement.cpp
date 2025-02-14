@@ -27,48 +27,78 @@ void SQLiteStatement::_bind_methods()
 
 SQLiteStatement::~SQLiteStatement()
 {
-    const int rc = sqlite3_finalize(stmt_);
-    ERR_FAIL_COND_MSG(rc != SQLITE_OK, String::utf8(sqlite3_errmsg(db_->db_)));
+    _close();
+}
+
+void SQLiteStatement::_close()
+{
+    if (db_.is_valid())
+    {
+        db_->disconnect(SQLiteDatabase::SIGNAL_CLOSED, callable_mp(this, &SQLiteStatement::_on_db_closed));
+
+        const int rc = sqlite3_finalize(stmt_);
+        ERR_FAIL_COND_MSG(rc != SQLITE_OK, String::utf8(sqlite3_errmsg(db_->db_)));
+        db_ = nullptr;
+    }
+}
+
+void SQLiteStatement::_on_db_closed()
+{
+    _close();
 }
 
 Error SQLiteStatement::step()
 {
+    if (!db_.is_valid()) return ERR_DATABASE_CANT_READ;
+
     const int rc = sqlite3_step(stmt_);
     return rc == SQLITE_ROW ? OK : rc == SQLITE_DONE ? ERR_UNAVAILABLE : FAILED;
 }
 
 Error SQLiteStatement::reset()
 {
+    if (!db_.is_valid()) return ERR_DATABASE_CANT_READ;
+
     const int rc = sqlite3_reset(stmt_);
     return rc == SQLITE_OK ? OK : FAILED;
 }
 
 Error SQLiteStatement::bind_null(int p_index)
 {
+    if (!db_.is_valid()) return ERR_DATABASE_CANT_READ;
+
     const int rc = sqlite3_bind_null(stmt_, p_index);
     return rc == SQLITE_OK ? OK : FAILED;
 }
 
 Error SQLiteStatement::bind_double(int p_index, double p_value)
 {
+    if (!db_.is_valid()) return ERR_DATABASE_CANT_READ;
+
     const int rc = sqlite3_bind_double(stmt_, p_index, p_value);
     return rc == SQLITE_OK ? OK : FAILED;
 }
 
 Error SQLiteStatement::bind_bool(int p_index, bool p_value)
 {
+    if (!db_.is_valid()) return ERR_DATABASE_CANT_READ;
+
     const int rc = sqlite3_bind_int64(stmt_, p_index, p_value);
     return rc == SQLITE_OK ? OK : FAILED;
 }
 
 Error SQLiteStatement::bind_int(int p_index, int64_t p_value)
 {
+    if (!db_.is_valid()) return ERR_DATABASE_CANT_READ;
+
     const int rc = sqlite3_bind_int64(stmt_, p_index, p_value);
     return rc == SQLITE_OK ? OK : FAILED;
 }
 
 Error SQLiteStatement::bind_text(int p_index, const String& p_value)
 {
+    if (!db_.is_valid()) return ERR_DATABASE_CANT_READ;
+
     const CharString u8 = p_value.utf8();
     const int rc = sqlite3_bind_text(stmt_, p_index, u8.get_data(), u8.length(), SQLITE_TRANSIENT);
     return rc == SQLITE_OK ? OK : FAILED;
@@ -76,9 +106,17 @@ Error SQLiteStatement::bind_text(int p_index, const String& p_value)
 
 Error SQLiteStatement::bind_blob(int p_index, const PackedByteArray& p_value)
 {
+    if (!db_.is_valid()) return ERR_DATABASE_CANT_READ;
+
     if (p_value.is_empty()) return bind_null(p_index);
     const int rc = sqlite3_bind_blob64(stmt_, p_index, p_value.ptr(), p_value.size(), SQLITE_TRANSIENT);
     return rc == SQLITE_OK ? OK : FAILED;
+}
+
+void SQLiteStatement::init(SQLiteDatabase* p_db)
+{
+    db_ = Ref(p_db);
+    db_->connect(SQLiteDatabase::SIGNAL_CLOSED, callable_mp(this, &SQLiteStatement::_on_db_closed));
 }
 
 Error SQLiteStatement::prepare(const String& p_query)
@@ -112,27 +150,31 @@ Variant::Type SQLiteStatement::column_type(int p_index) const
 
 bool SQLiteStatement::column_bool(int p_index) const
 {
-    return sqlite3_column_int64(stmt_, p_index) != 0;
+    return db_.is_valid() && sqlite3_column_int64(stmt_, p_index) != 0;
 }
 
 int64_t SQLiteStatement::column_int(int p_index) const
 {
-    return sqlite3_column_int64(stmt_, p_index);
+    return db_.is_valid() ? sqlite3_column_int64(stmt_, p_index) : 0;
 }
 
 double SQLiteStatement::column_double(int p_index) const
 {
-    return sqlite3_column_double(stmt_, p_index);
+    return db_.is_valid() ? sqlite3_column_double(stmt_, p_index) : 0;
 }
 
 String SQLiteStatement::column_text(int p_index) const
 {
+    if (!db_.is_valid()) return String();
+
     const unsigned char* u8 = sqlite3_column_text(stmt_, p_index);
     return u8 ? String::utf8((const char*) u8) : String();
 }
 
 PackedByteArray SQLiteStatement::column_blob(int p_index) const
 {
+    if (!db_.is_valid()) return PackedByteArray();
+
     const int n = sqlite3_column_bytes(stmt_, p_index);
     PackedByteArray buf;
     buf.resize(n);

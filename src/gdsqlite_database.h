@@ -14,10 +14,14 @@ class SQLiteDatabase : public RefCounted
 private:
     sqlite3* db_ = nullptr;
 
+    void _detach(bool p_emit_signal);
+
 protected:
     static void _bind_methods();
 
 public:
+    static constexpr char SIGNAL_CLOSED[] = "closed";
+
     static Ref<SQLiteDatabase> open(const String& p_path, bool p_readonly);
     void close();
 

@@ -15,7 +15,11 @@ private:
     Ref<SQLiteDatabase> db_;
     sqlite3_stmt* stmt_ = nullptr;
 
+    void init(SQLiteDatabase* p_db);
     Error prepare(const String& p_query);
+
+    void _close();
+    void _on_db_closed();
 
 protected:
     static void _bind_methods();

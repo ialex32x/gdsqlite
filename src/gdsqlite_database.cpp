@@ -14,6 +14,8 @@ void SQLiteDatabase::_bind_methods()
     ClassDB::bind_method(D_METHOD("close"), &SQLiteDatabase::close);
     ClassDB::bind_method(D_METHOD("prepare", "sql"), &SQLiteDatabase::prepare);
     ClassDB::bind_method(D_METHOD("exec", "sql"), &SQLiteDatabase::exec);
+
+    ADD_SIGNAL(MethodInfo(SIGNAL_CLOSED));
 }
 
 namespace
@@ -289,8 +291,15 @@ Ref<SQLiteDatabase> SQLiteDatabase::open(const String& p_path, bool p_readonly)
 
 void SQLiteDatabase::close()
 {
+    _detach(true);
+}
+
+void SQLiteDatabase::_detach(bool p_emit_signal)
+{
     if (db_)
     {
+        if (p_emit_signal) emit_signal(SIGNAL_CLOSED);
+
         const int rc = sqlite3_close_v2(db_);
         db_ = nullptr;
 
@@ -300,13 +309,13 @@ void SQLiteDatabase::close()
 
 SQLiteDatabase::~SQLiteDatabase()
 {
-    close();
+    _detach(false);
 }
 
 Ref<SQLiteStatement> SQLiteDatabase::prepare(const String& p_query)
 {
     Ref statement = memnew(SQLiteStatement);
-    statement->db_ = Ref(this);
+    statement->init(this);
     const Error err = statement->prepare(p_query);
     ERR_FAIL_COND_V_MSG(err != OK, Ref<SQLiteStatement>(), String::utf8(sqlite3_errmsg(db_)));
     return statement;
